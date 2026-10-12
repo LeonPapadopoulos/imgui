@@ -32,6 +32,7 @@
 // CHANGELOG
 // (minor and older changes stripped away, please see git history for details)
 //  2026-XX-XX: Platform: Added support for multiple windows via the ImGuiPlatformIO interface.
+//  2026-09-15: [Docking] Fixed applying mouse cursor shapes to secondary viewports (broken in 1.92.6, 2025-12-10).
 //  2026-02-10: Try to set IMGUI_IMPL_GLFW_DISABLE_X11 / IMGUI_IMPL_GLFW_DISABLE_WAYLAND automatically if corresponding headers are not accessible. (#9225)
 //  2026-01-25: [Docking] Improve workarounds for cases where GLFW is unable to provide any reliable monitor info. Preserve existing monitor list when none of the new one is valid. (#9195, #7902, #5683)
 //  2026-01-18: [Docking] Dynamically load X11 functions to avoid -lx11 linking requirement introduced on 2025-09-10.
@@ -997,6 +998,15 @@ static void ImGui_ImplGlfw_UpdateMouseCursor()
 
     ImGuiMouseCursor imgui_cursor = ImGui::GetMouseCursor();
     ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
+
+#if GLFW_HAS_CREATECURSOR
+    GLFWcursor* set_mouse_cursor = bd->MouseCursors[imgui_cursor] ? bd->MouseCursors[imgui_cursor] : bd->MouseCursors[ImGuiMouseCursor_Arrow];
+    if (bd->LastMouseCursor == set_mouse_cursor)
+        set_mouse_cursor = NULL;
+    else
+        bd->LastMouseCursor = set_mouse_cursor;
+#endif
+
     for (int n = 0; n < platform_io.Viewports.Size; n++)
     {
         GLFWwindow* window = (GLFWwindow*)platform_io.Viewports[n]->PlatformHandle;
@@ -1014,12 +1024,8 @@ static void ImGui_ImplGlfw_UpdateMouseCursor()
             // Show OS mouse cursor
             // FIXME-PLATFORM: Unfocused windows seems to fail changing the mouse cursor with GLFW 3.2, but 3.3 works here.
 #if GLFW_HAS_CREATECURSOR
-            GLFWcursor* cursor = bd->MouseCursors[imgui_cursor] ? bd->MouseCursors[imgui_cursor] : bd->MouseCursors[ImGuiMouseCursor_Arrow];
-            if (bd->LastMouseCursor != cursor)
-            {
-                glfwSetCursor(window, cursor);
-                bd->LastMouseCursor = cursor;
-            }
+            if (set_mouse_cursor)
+                glfwSetCursor(window, set_mouse_cursor);
 #endif
             glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
         }
@@ -1407,6 +1413,7 @@ static void ImGui_ImplGlfw_CreateWindow(ImGuiViewport* viewport)
         glfwMakeContextCurrent(vd->Window);
         glfwSwapInterval(0);
     }
+    bd->LastMouseCursor = nullptr; // Invalidate so that cursor is set again
 }
 
 static void ImGui_ImplGlfw_DestroyWindow(ImGuiViewport* viewport)
